@@ -1,0 +1,49 @@
+---
+- name: Importing any preset variables from secrets.yml, if you have them set, just press enter on the following prompts
+  hosts: all
+  tasks:
+    - name: Checking if subscription certificates already exists"
+      find:
+        paths: /etc/pki/entitlement
+        patterns: '*-key.pem'
+      register: entitlement
+
+    - name: Fail if files exists in /etc/pki/entitlement
+      fail:
+        msg: "There already exists files in /etc/pki/entitlement"
+      when: entitlement.files
+
+    - name: Importing from secrets.yml
+      include_vars: "{{ playbook_dir }}/vars/secrets.yml"
+
+- name: Starting RHEL Container and requesting a new subscription
+  hosts: all
+  vars_prompt:
+    - name: "redhat_organization_id"
+      prompt: "\nRed Hat Organization Number"
+      private: "no"
+    - name: "redhat_activationkey_name"
+      prompt: "Red Hat Activation Key"
+      private: "no"
+  tasks:
+    - name: Start container
+      docker_container:
+        name: "{{ lookup('env','USER') }}-{{ redhat_organization_id }}-{{ redhat_activationkey_name }}"
+        hostname: "{{ lookup('env','USER') }}-{{ redhat_organization_id }}-{{ redhat_activationkey_name }}"
+        image: registry.access.redhat.com/rhel7:latest
+        detach: "no"
+        privileged: true
+        volumes:
+          - /etc/pki/consumer:/etc/pki/consumer:z
+          - /etc/pki/entitlement:/etc/pki/entitlement:z
+          - ./scripts:/deploy:z
+        env:
+          RH_ORG: "{{ redhat_organization_id }}"
+          RH_ACTIVATIONKEY: "{{ redhat_activationkey_name }}"
+        command: /bin/bash /deploy/reg-and-get-sub.sh
+
+- name: Finished, subscription downloaded. You may continue.
+  hosts: all
+  gather_facts: "no"
+  tasks:
+    - debug: msg="Finished"
